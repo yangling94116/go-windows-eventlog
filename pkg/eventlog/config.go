@@ -1,0 +1,121 @@
+// Licensed to Elasticsearch B.V. under one or more contributor
+// license agreements. See the NOTICE file distributed with
+// this work for additional information regarding copyright
+// ownership. Elasticsearch B.V. licenses this file to you under
+// the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package eventlog
+
+import (
+	"fmt"
+	"time"
+)
+
+// Config is the configuration for reading Windows Event Logs.
+type Config struct {
+	// Name is the name of the event log or the path to an .evtx file.
+	// For channel-based reading: "Application", "Security", "System", etc.
+	// For file-based reading: path to .evtx file
+	Name string `yaml:"name" json:"name"`
+
+	// Query is an XPath query to filter events. If empty, all events are read.
+	// Example: "*[System[(Level=1 or Level=2)]]" for errors and warnings only.
+	// See: https://docs.microsoft.com/en-us/windows/win32/wes/consuming-events
+	Query string `yaml:"query,omitempty" json:"query,omitempty"`
+
+	// CheckpointFile is the path to the file where reading state is persisted.
+	// This allows resuming from the last read position after a restart.
+	CheckpointFile string `yaml:"checkpoint_file,omitempty" json:"checkpoint_file,omitempty"`
+
+	// BatchSize is the maximum number of events to read in a single batch.
+	// Default: 100
+	BatchSize int `yaml:"batch_size,omitempty" json:"batch_size,omitempty"`
+
+	// IgnoreOlder ignores events older than this duration.
+	// Default: 0 (read all events)
+	IgnoreOlder time.Duration `yaml:"ignore_older,omitempty" json:"ignore_older,omitempty"`
+
+	// IncludeXML includes the raw XML representation of events in the output.
+	// This can be useful for debugging but increases memory usage.
+	// Default: false
+	IncludeXML bool `yaml:"include_xml,omitempty" json:"include_xml,omitempty"`
+
+	// Forwarded indicates whether to treat this as a forwarded events channel.
+	// Forwarded events are rendered differently to avoid local metadata lookups.
+	// Default: false
+	Forwarded bool `yaml:"forwarded,omitempty" json:"forwarded,omitempty"`
+
+	// Locale is the locale ID for rendering messages.
+	// Default: 0 (system default locale)
+	Locale uint32 `yaml:"locale,omitempty" json:"locale,omitempty"`
+
+	// IgnoreMissingChannel controls whether to ignore errors when the channel doesn't exist.
+	// Useful for reading from channels that may not be present on all systems.
+	// Default: false
+	IgnoreMissingChannel bool `yaml:"ignore_missing_channel,omitempty" json:"ignore_missing_channel,omitempty"`
+}
+
+// Validate validates the configuration and sets defaults.
+func (c *Config) Validate() error {
+	if c.Name == "" {
+		return fmt.Errorf("event log name cannot be empty")
+	}
+
+	// Set defaults
+	if c.BatchSize <= 0 {
+		c.BatchSize = 100
+	}
+
+	if c.BatchSize > 1000 {
+		return fmt.Errorf("batch_size cannot exceed 1000, got %d", c.BatchSize)
+	}
+
+	return nil
+}
+
+// RunConfig contains runtime configuration for the event log runner.
+type RunConfig struct {
+	// MetricsRegistry is an optional metrics collector.
+	MetricsRegistry MetricsRegistry
+
+	// StatusReporter is an optional status reporter.
+	StatusReporter StatusReporter
+
+	// Logger is the logger to use. If nil, logging is disabled.
+	Logger Logger
+}
+
+// RunOption is a functional option for configuring the event log runner.
+type RunOption func(*RunConfig)
+
+// WithMetrics sets the metrics registry.
+func WithMetrics(registry MetricsRegistry) RunOption {
+	return func(c *RunConfig) {
+		c.MetricsRegistry = registry
+	}
+}
+
+// WithStatusReporter sets the status reporter.
+func WithStatusReporter(reporter StatusReporter) RunOption {
+	return func(c *RunConfig) {
+		c.StatusReporter = reporter
+	}
+}
+
+// WithLogger sets the logger.
+func WithLogger(logger Logger) RunOption {
+	return func(c *RunConfig) {
+		c.Logger = logger
+	}
+}
