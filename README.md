@@ -10,7 +10,7 @@ A Go library for reading Windows Event Logs, extracted from [Elastic Beats](http
 go get github.com/tianlin/go-windows-eventlog
 ```
 
-**Requirements:** Go 1.21+, Windows OS
+**Requirements:** Go 1.23+, Windows OS
 
 ## Usage
 

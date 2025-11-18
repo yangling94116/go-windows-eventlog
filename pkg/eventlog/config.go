@@ -18,6 +18,7 @@
 package eventlog
 
 import (
+	"encoding/xml"
 	"fmt"
 	"time"
 )
@@ -28,6 +29,10 @@ type Config struct {
 	// For channel-based reading: "Application", "Security", "System", etc.
 	// For file-based reading: path to .evtx file
 	Name string `yaml:"name" json:"name"`
+
+	// ID is an optional identifier for the event log reader.
+	// If not specified, Name is used as the ID.
+	ID string `yaml:"id,omitempty" json:"id,omitempty"`
 
 	// Query is an XPath query to filter events. If empty, all events are read.
 	// Example: "*[System[(Level=1 or Level=2)]]" for errors and warnings only.
@@ -46,6 +51,15 @@ type Config struct {
 	// Default: 0 (read all events)
 	IgnoreOlder time.Duration `yaml:"ignore_older,omitempty" json:"ignore_older,omitempty"`
 
+	// Level filters events by severity level (e.g., "critical", "error", "warning", "information", "verbose").
+	Level string `yaml:"level,omitempty" json:"level,omitempty"`
+
+	// EventID filters events by event ID. Format: "1,2,3-10,-100" (whitelist/blacklist).
+	EventID string `yaml:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// Provider filters events by provider name (source).
+	Provider []string `yaml:"provider,omitempty" json:"provider,omitempty"`
+
 	// IncludeXML includes the raw XML representation of events in the output.
 	// This can be useful for debugging but increases memory usage.
 	// Default: false
@@ -53,8 +67,8 @@ type Config struct {
 
 	// Forwarded indicates whether to treat this as a forwarded events channel.
 	// Forwarded events are rendered differently to avoid local metadata lookups.
-	// Default: false
-	Forwarded bool `yaml:"forwarded,omitempty" json:"forwarded,omitempty"`
+	// If not specified, defaults to true for the "ForwardedEvents" channel.
+	Forwarded *bool `yaml:"forwarded,omitempty" json:"forwarded,omitempty"`
 
 	// Locale is the locale ID for rendering messages.
 	// Default: 0 (system default locale)
@@ -62,8 +76,12 @@ type Config struct {
 
 	// IgnoreMissingChannel controls whether to ignore errors when the channel doesn't exist.
 	// Useful for reading from channels that may not be present on all systems.
-	// Default: false
-	IgnoreMissingChannel bool `yaml:"ignore_missing_channel,omitempty" json:"ignore_missing_channel,omitempty"`
+	// Default: true for channels, false for files
+	IgnoreMissingChannel *bool `yaml:"ignore_missing_channel,omitempty" json:"ignore_missing_channel,omitempty"`
+
+	// NoMoreEvents defines what action to take when no more events are available.
+	// Options: "wait" (default) or "stop".
+	NoMoreEvents string `yaml:"no_more_events,omitempty" json:"no_more_events,omitempty"`
 }
 
 // Validate validates the configuration and sets defaults.
@@ -79,6 +97,13 @@ func (c *Config) Validate() error {
 
 	if c.BatchSize > 1000 {
 		return fmt.Errorf("batch_size cannot exceed 1000, got %d", c.BatchSize)
+	}
+
+	// Validate XML query syntax if provided
+	if c.Query != "" {
+		if err := xml.Unmarshal([]byte(c.Query), &struct{}{}); err != nil {
+			return fmt.Errorf("invalid xml query: %w", err)
+		}
 	}
 
 	return nil
