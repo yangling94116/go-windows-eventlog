@@ -28,7 +28,7 @@ import (
 
 // AddOptional adds a key and value to the given map if the value is not the
 // zero value for the type of v. It is safe to call the function with a nil map.
-func AddOptional(m map[string]interface{}, key string, v interface{}) {
+func AddOptional(m MapStr, key string, v interface{}) {
 	if m != nil && !isZero(v) {
 		setNestedField(m, key, v)
 	}
@@ -41,14 +41,14 @@ func AddOptional(m map[string]interface{}, key string, v interface{}) {
 //
 // The new dictionary is added to the given map and it is also returned for
 // convenience purposes.
-func AddPairs(m map[string]interface{}, key string, pairs []KeyValue) map[string]interface{} {
+func AddPairs(m MapStr, key string, pairs []KeyValue) MapStr {
 	if len(pairs) == 0 {
 		return nil
 	}
 
 	// Explicitly use the unnamed type to prevent accidental use
 	// of map path look-up methods.
-	h := make(map[string]interface{}, len(pairs))
+	h := make(MapStr, len(pairs))
 
 	for i, kv := range pairs {
 		// Ignore empty values.
@@ -97,19 +97,24 @@ func isZero(i interface{}) bool {
 
 // setNestedField sets a value in a nested map using dot notation.
 // For example: setNestedField(m, "event.code", 123) sets m["event"]["code"] = 123
-func setNestedField(m map[string]interface{}, key string, value interface{}) {
+func setNestedField(m MapStr, key string, value interface{}) {
 	keys := strings.Split(key, ".")
 	current := m
 
 	for i := 0; i < len(keys)-1; i++ {
 		if _, exists := current[keys[i]]; !exists {
-			current[keys[i]] = make(map[string]interface{})
+			current[keys[i]] = make(MapStr)
 		}
 		var ok bool
-		current, ok = current[keys[i]].(map[string]interface{})
+		current, ok = current[keys[i]].(MapStr)
 		if !ok {
-			// Path exists but is not a map, cannot set nested field
-			return
+			// Try map[string]interface{} for backward compatibility
+			if m, ok := current[keys[i]].(map[string]interface{}); ok {
+				current = MapStr(m)
+			} else {
+				// Path exists but is not a map, cannot set nested field
+				return
+			}
 		}
 	}
 

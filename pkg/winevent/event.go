@@ -77,9 +77,9 @@ type Event struct {
 	RenderErr               []string
 }
 
-func (e Event) Fields() map[string]interface{} {
+func (e Event) Fields() MapStr {
 	// Windows Log Specific data
-	win := make(map[string]interface{})
+	win := make(MapStr)
 
 	AddOptional(win, "channel", e.Channel)
 	AddOptional(win, "event_id", fmt.Sprint(e.EventIdentifier.ID))
@@ -103,7 +103,7 @@ func (e Event) Fields() map[string]interface{} {
 	AddOptional(win, "message", sys.RemoveWindowsLineEndings(e.Message))
 
 	if e.User.Identifier != "" {
-		user := map[string]interface{}{
+		user := MapStr{
 			"identifier": e.User.Identifier,
 		}
 		win["user"] = user

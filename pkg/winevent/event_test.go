@@ -163,7 +163,7 @@ func TestXML(t *testing.T) {
 	tests := []struct {
 		xml    string
 		event  Event
-		mapstr map[string]interface{}
+		mapstr MapStr
 	}{
 		{
 			xml: allXML,
@@ -280,14 +280,14 @@ func TestXML(t *testing.T) {
 				RenderErrorCode:         0x3a9d,
 				RenderErrorDataItemName: "shellId",
 			},
-			mapstr: map[string]interface{}{
+			mapstr: MapStr{
 				"activity_id":   "{BE97B1E6-710B-47D7-8941-50AB2A2C757F}",
 				"channel":       "Microsoft-Windows-WinRM/Operational",
 				"computer_name": "vagrant-2012-r2",
-				"error": map[string]interface{}{
+				"error": MapStr{
 					"code": uint32(0x3a9d),
 				},
-				"event_data": map[string]interface{}{
+				"event_data": MapStr{
 					"Aplicación host":             "C:\\WINDOWS\\System32\\WindowsPowerShell\\V1.0\\PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command  exit 1",
 					"Binary":                      "770069006E006C006F00670062006500610074002F0034000000",
 					"Gravedad":                    "Informational",
@@ -309,9 +309,9 @@ func TestXML(t *testing.T) {
 				"message":  "CommandInvocation(Get-Date): \"Get-Date\"\n\n\nContexto:\n Gravedad = Informational\n Nombre de host = ConsoleHost\n Versión de host = 5.1.19041.1320\n Id. de host = 56995afd-2444-424e-871c-4c5513731a3b\n Aplicación host = C:\\WINDOWS\\System32\\WindowsPowerShell\\V1.0\\PowerShell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command  exit 1\n Versión del motor = 5.1.19041.1320\n Id. de espacio de ejecución = 91bb420c-d23e-4926-912b-6d11190df3fb\n Id. de canalización = 1\n Nombre de comando = Get-Date\n Tipo de comando = Cmdlet\n Nombre de script = C:\\WINDOWS\\Administrador\\service-1\\exec\\Invoke.ps1\n Ruta de acceso de comando =\n Número de secuencia = 4174\n Usuario = GENTE\\persona\n Usuario conectado =\n Id. de shell = Microsoft.PowerShell\n\n\nDatos de usuario:",
 				"opcode":   "Para usar cuando la operación solo está ejecutando un método.",
 				"outcome":  "success",
-				"process": map[string]interface{}{
+				"process": MapStr{
 					"pid": uint32(0x398),
-					"thread": map[string]interface{}{
+					"thread": MapStr{
 						"id": uint32(0x480),
 					},
 				},
@@ -321,10 +321,10 @@ func TestXML(t *testing.T) {
 				"related_activity_id": "{EDAD163F-52D0-4E89-BEF8-0500EC6F08AF}",
 				"task":                "Request handling",
 				"time_created":        allXMLTimeCreated,
-				"user": map[string]interface{}{
+				"user": MapStr{
 					"identifier": "S-1-5-21-4564564786-2382305473-342768465-7452",
 				},
-				"user_data": map[string]interface{}{
+				"user_data": MapStr{
 					"ServerName": "\\\\VAGRANT-2012-R2",
 					"UserName":   "vagrant",
 					"xml_name":   "EventXML",
@@ -353,10 +353,10 @@ func TestXML(t *testing.T) {
 					},
 				},
 			},
-			mapstr: map[string]interface{}{
+			mapstr: MapStr{
 				"event_id":     "0",
 				"time_created": time.Time{},
-				"user_data": map[string]interface{}{
+				"user_data": MapStr{
 					"Id":       "{00000000-0000-0000-0000-000000000000}",
 					"xml_name": "Operation_ClientFailure",
 				},

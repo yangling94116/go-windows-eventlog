@@ -39,7 +39,7 @@ type Event struct {
 	// Timestamp is the event creation time.
 	Timestamp time.Time
 	// Fields contains all event data in a structured format.
-	Fields map[string]interface{}
+	Fields winevent.MapStr
 	// Private contains internal state (like checkpoint information).
 	Private interface{}
 }
@@ -47,11 +47,11 @@ type Event struct {
 // ToMap converts the Record to a map structure suitable for serialization.
 // This method transforms the raw Windows Event into a more user-friendly format,
 // including ECS (Elastic Common Schema) compatible fields.
-func (r Record) ToMap() map[string]interface{} {
+func (r Record) ToMap() winevent.MapStr {
 	win := r.Fields()
 	delete(win, "time_created")
 
-	m := map[string]interface{}{
+	m := winevent.MapStr{
 		"winlog": win,
 	}
 
@@ -91,19 +91,24 @@ func (r Record) ToEvent() Event {
 
 // setNestedField sets a value in a nested map using dot notation.
 // For example: setNestedField(m, "event.code", 123) sets m["event"]["code"] = 123
-func setNestedField(m map[string]interface{}, key string, value interface{}) {
+func setNestedField(m winevent.MapStr, key string, value interface{}) {
 	keys := strings.Split(key, ".")
 	current := m
 
 	for i := 0; i < len(keys)-1; i++ {
 		if _, exists := current[keys[i]]; !exists {
-			current[keys[i]] = make(map[string]interface{})
+			current[keys[i]] = make(winevent.MapStr)
 		}
 		var ok bool
-		current, ok = current[keys[i]].(map[string]interface{})
+		current, ok = current[keys[i]].(winevent.MapStr)
 		if !ok {
-			// Path exists but is not a map, cannot set nested field
-			return
+			// Try map[string]interface{} for backward compatibility
+			if m, ok := current[keys[i]].(map[string]interface{}); ok {
+				current = winevent.MapStr(m)
+			} else {
+				// Path exists but is not a map, cannot set nested field
+				return
+			}
 		}
 	}
 
@@ -111,7 +116,7 @@ func setNestedField(m map[string]interface{}, key string, value interface{}) {
 }
 
 // rename renames a map entry, overriding any previous value at the new key.
-func rename(m map[string]interface{}, oldKey, newKey string) {
+func rename(m winevent.MapStr, oldKey, newKey string) {
 	v, err := getNestedField(m, oldKey)
 	if err != nil {
 		return
@@ -121,7 +126,7 @@ func rename(m map[string]interface{}, oldKey, newKey string) {
 }
 
 // addOptional adds a field to the map only if the value is not empty.
-func addOptional(m map[string]interface{}, key string, value interface{}) {
+func addOptional(m winevent.MapStr, key string, value interface{}) {
 	if value == nil {
 		return
 	}
@@ -132,7 +137,7 @@ func addOptional(m map[string]interface{}, key string, value interface{}) {
 }
 
 // getNestedField retrieves a value from a nested map using dot notation.
-func getNestedField(m map[string]interface{}, key string) (interface{}, error) {
+func getNestedField(m winevent.MapStr, key string) (interface{}, error) {
 	keys := strings.Split(key, ".")
 	current := m
 
@@ -141,9 +146,14 @@ func getNestedField(m map[string]interface{}, key string) (interface{}, error) {
 			return nil, nil
 		}
 		var ok bool
-		current, ok = current[keys[i]].(map[string]interface{})
+		current, ok = current[keys[i]].(winevent.MapStr)
 		if !ok {
-			return nil, nil
+			// Try map[string]interface{} for backward compatibility
+			if m, ok := current[keys[i]].(map[string]interface{}); ok {
+				current = winevent.MapStr(m)
+			} else {
+				return nil, nil
+			}
 		}
 	}
 
@@ -151,7 +161,7 @@ func getNestedField(m map[string]interface{}, key string) (interface{}, error) {
 }
 
 // deleteNestedField deletes a value from a nested map using dot notation.
-func deleteNestedField(m map[string]interface{}, key string) {
+func deleteNestedField(m winevent.MapStr, key string) {
 	keys := strings.Split(key, ".")
 	current := m
 
@@ -160,9 +170,14 @@ func deleteNestedField(m map[string]interface{}, key string) {
 			return
 		}
 		var ok bool
-		current, ok = current[keys[i]].(map[string]interface{})
+		current, ok = current[keys[i]].(winevent.MapStr)
 		if !ok {
-			return
+			// Try map[string]interface{} for backward compatibility
+			if m, ok := current[keys[i]].(map[string]interface{}); ok {
+				current = winevent.MapStr(m)
+			} else {
+				return
+			}
 		}
 	}
 
