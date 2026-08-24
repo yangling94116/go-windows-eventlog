@@ -28,7 +28,7 @@ import (
 
 // IsRecoverable returns a boolean indicating whether the error represents
 // a condition where the Windows Event Log session can be recovered through a
-// reopening of the handle (Close, Open).
+// reset and reopening of the handle (Reset, Open).
 //
 //nolint:errorlint // These are never wrapped.
 func IsRecoverable(err error, isFile bool) bool {
