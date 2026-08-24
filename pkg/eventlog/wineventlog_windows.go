@@ -32,11 +32,69 @@ import (
 	"github.com/tianlin/go-windows-eventlog/pkg/wineventlog"
 )
 
+var errRecordIDGap = errors.New("record ID gap detected")
+var errRenderNoEvent = errors.New("rendering error without partial event")
+
+const renderNoEventRetryLimit = 3
+const recordIDGapRetryLimit = 3
+
+type gapDetectedError struct {
+	channel  string
+	previous uint64
+	current  uint64
+	bookmark string
+}
+
+func (e *gapDetectedError) Error() string {
+	return fmt.Sprintf("%v in channel %q (previous=%d current=%d)",
+		errRecordIDGap, e.channel, e.previous, e.current)
+}
+
+func (e *gapDetectedError) Unwrap() error { return errRecordIDGap }
+
+func (e *gapDetectedError) Bookmark() string { return e.bookmark }
+
+func (e *gapDetectedError) RetryKey() string {
+	return fmt.Sprintf("%s:%d:%d", e.channel, e.previous, e.current)
+}
+
+type renderNoEventError struct {
+	cause    error
+	bookmark string
+}
+
+func (e *renderNoEventError) Error() string {
+	if e.cause == nil {
+		return errRenderNoEvent.Error()
+	}
+	return fmt.Sprintf("%v: %v", errRenderNoEvent, e.cause)
+}
+
+func (e *renderNoEventError) Unwrap() error { return errRenderNoEvent }
+
+func (e *renderNoEventError) Bookmark() string { return e.bookmark }
+
+func (e *renderNoEventError) RetryKey() string {
+	if e.bookmark != "" {
+		return e.bookmark
+	}
+	return fmt.Sprintf("no-bookmark:%v", e.cause)
+}
+
+func (l *winEventLog) newRenderNoEventError(handle wineventlog.EvtHandle, cause error) *renderNoEventError {
+	bookmark, bookmarkErr := l.createBookmarkFromEvent(handle)
+	return &renderNoEventError{
+		cause:    errors.Join(cause, bookmarkErr),
+		bookmark: bookmark,
+	}
+}
+
 // winEventLog implements the EventLog interface for reading from the Windows
 // Event Log API.
 type winEventLog struct {
 	config      Config
 	query       string
+	filter      *recordFilter
 	id          string // Identifier of this event log.
 	channelName string // Name of the channel from which to read.
 	file        bool   // Reading from file rather than channel.
@@ -46,6 +104,11 @@ type winEventLog struct {
 
 	iterator *wineventlog.EventIterator
 	renderer wineventlog.EventRenderer
+
+	renderNoEventKey   string
+	renderNoEventCount int
+	gapRetryKey        string
+	gapRetryCount      int
 }
 
 // New creates and returns a new EventLog instance based on the given config.
@@ -67,37 +130,27 @@ func New(config Config) (EventLog, error) {
 		log:         &noopLogger{},
 	}
 
-	// Build the query
+	var err error
 	if config.Query != "" {
 		l.query = config.Query
 	} else {
-		queryLog := config.Name
 		if info, err := os.Stat(config.Name); err == nil && info.Mode().IsRegular() {
 			path, err := filepath.Abs(config.Name)
 			if err != nil {
 				return nil, err
 			}
 			l.file = true
-			queryLog = "file://" + path
+			l.channelName = path
 		}
 
-		winQuery := wineventlog.Query{
-			Log:         queryLog,
-			IgnoreOlder: config.IgnoreOlder,
-			Level:       config.Level,
-			EventID:     config.EventID,
-			Provider:    config.Provider,
-		}
-
-		var err error
-		l.query, err = winQuery.Build()
+		l.filter, err = newRecordFilter(config.recordQuery())
 		if err != nil {
 			return nil, err
 		}
+		l.query = "*"
 	}
 
 	// Create the renderer
-	var err error
 	if config.IncludeXML || l.isForwarded() {
 		l.renderer = wineventlog.NewXMLRenderer(
 			config.Locale,
@@ -227,24 +280,30 @@ func (l *winEventLog) openChannel(bookmark wineventlog.Bookmark) (wineventlog.Ev
 	if l.log != nil {
 		l.log.Debug("Using subscription query", "query", l.query)
 	}
+	channelPath := ""
+	if l.config.Query == "" {
+		channelPath = l.channelName
+	}
 
 	h, err := wineventlog.Subscribe(
 		0, // Session - nil for localhost
 		signalEvent,
-		"",                                  // Channel - empty b/c channel is in the query
-		l.query,                             // Query - nil means all events
-		wineventlog.EvtHandle(bookmark),     // Bookmark - for resuming from a specific event
+		channelPath,
+		l.query,                         // Query - nil means all events
+		wineventlog.EvtHandle(bookmark), // Bookmark - for resuming from a specific event
 		flags)
 
-	switch err { //nolint:errorlint // This is an errno or nil.
-	case nil:
+	if err == nil {
 		return h, nil
-	case wineventlog.ERROR_NOT_FOUND, wineventlog.ERROR_EVT_QUERY_RESULT_STALE, wineventlog.ERROR_EVT_QUERY_RESULT_INVALID_POSITION:
-		// The bookmarked event was not found, we retry the subscription from the start.
-		return wineventlog.Subscribe(0, signalEvent, "", l.query, 0, wineventlog.EvtSubscribeStartAtOldestRecord)
-	default:
-		return 0, err
 	}
+	if errors.Is(err, wineventlog.ERROR_NOT_FOUND) ||
+		errors.Is(err, wineventlog.ERROR_EVT_QUERY_RESULT_STALE) ||
+		errors.Is(err, wineventlog.ERROR_EVT_QUERY_RESULT_INVALID_POSITION) {
+		// The bookmarked event was not found, we retry the subscription from the start.
+		l.resetLastRead()
+		return wineventlog.Subscribe(0, signalEvent, channelPath, l.query, 0, wineventlog.EvtSubscribeStartAtOldestRecord)
+	}
+	return 0, err
 }
 
 func (l *winEventLog) Read() ([]Record, error) {
@@ -253,9 +312,14 @@ func (l *winEventLog) Read() ([]Record, error) {
 	for h, ok := l.iterator.Next(); ok; h, ok = l.iterator.Next() {
 		record, err := l.processHandle(h)
 		if err != nil {
-			if l.log != nil {
-				l.log.Warn("Dropping event due to rendering error", "error", err)
+			if returnErr := l.handleProcessError(err); returnErr != nil {
+				return records, returnErr
 			}
+			continue
+		}
+		l.resetRenderNoEventRetry()
+		l.resetGapRetry()
+		if l.filter != nil && !l.filter.match(record) {
 			continue
 		}
 		records = append(records, *record)
@@ -279,13 +343,80 @@ func (l *winEventLog) Read() ([]Record, error) {
 	return records, nil
 }
 
+func (l *winEventLog) handleProcessError(err error) error {
+	var renderErr *renderNoEventError
+	if errors.As(err, &renderErr) {
+		l.resetGapRetry()
+		retryCount := l.incrementRenderNoEventRetry(renderErr.RetryKey())
+		if retryCount <= renderNoEventRetryLimit {
+			return err
+		}
+
+		if l.log != nil {
+			l.log.Error("Dropping poison event after repeated render failures",
+				"channel", l.channelName,
+				"retry_count", retryCount,
+				"retry_limit", renderNoEventRetryLimit)
+		}
+		if bookmark := renderErr.Bookmark(); bookmark != "" {
+			l.lastRead.Bookmark = bookmark
+		} else {
+			if l.log != nil {
+				l.log.Error("Dropping poison event without bookmark after repeated render failures",
+					"channel", l.channelName,
+					"retry_count", retryCount,
+					"retry_limit", renderNoEventRetryLimit)
+			}
+			l.resetRenderNoEventRetry()
+			return nil
+		}
+		l.lastRead.RecordNumber = 0
+		l.resetRenderNoEventRetry()
+		return nil
+	}
+
+	l.resetRenderNoEventRetry()
+	var gapErr *gapDetectedError
+	if errors.As(err, &gapErr) {
+		retryCount := l.incrementGapRetry(gapErr.RetryKey())
+		if retryCount <= recordIDGapRetryLimit {
+			return err
+		}
+
+		if l.log != nil {
+			l.log.Error("Accepting record ID gap after repeated retries",
+				"channel", l.channelName,
+				"retry_count", retryCount,
+				"retry_limit", recordIDGapRetryLimit,
+				"previous_record_id", gapErr.previous,
+				"current_record_id", gapErr.current,
+				"missing", gapErr.current-gapErr.previous-1)
+		}
+		if bookmark := gapErr.Bookmark(); bookmark != "" {
+			l.lastRead.Bookmark = bookmark
+		}
+		l.lastRead.RecordNumber = gapErr.current
+		l.resetGapRetry()
+		return nil
+	}
+
+	l.resetGapRetry()
+	if errors.Is(err, errRecordIDGap) || errors.Is(err, errRenderNoEvent) {
+		return err
+	}
+	if l.log != nil {
+		l.log.Warn("Dropping event due to rendering error", "error", err)
+	}
+	return nil
+}
+
 func (l *winEventLog) processHandle(h wineventlog.EvtHandle) (*Record, error) {
 	defer h.Close()
 
 	// NOTE: Render can return an error and a partial event.
 	evt, xml, err := l.renderer.Render(h)
 	if evt == nil {
-		return nil, err
+		return nil, l.newRenderNoEventError(h, err)
 	}
 	if err != nil {
 		evt.RenderErr = append(evt.RenderErr, err.Error())
@@ -303,6 +434,18 @@ func (l *winEventLog) processHandle(h wineventlog.EvtHandle) (*Record, error) {
 		r.File = l.id
 	}
 
+	previousRecordID := l.lastRead.RecordNumber
+	if l.config.Query == "" && !l.file && previousRecordID > 0 && r.RecordID > previousRecordID+1 {
+		if l.log != nil {
+			l.log.Warn("Record ID gap detected, resetting subscription",
+				"channel", l.channelName,
+				"previous_record_id", previousRecordID,
+				"current_record_id", r.RecordID,
+				"missing", r.RecordID-previousRecordID-1)
+		}
+		return nil, l.newGapDetectedError(h, previousRecordID, r.RecordID)
+	}
+
 	r.Offset = checkpoint.EventLogState{
 		Name:         l.id,
 		RecordNumber: r.RecordID,
@@ -316,6 +459,19 @@ func (l *winEventLog) processHandle(h wineventlog.EvtHandle) (*Record, error) {
 	}
 	l.lastRead = r.Offset
 	return r, nil
+}
+
+func (l *winEventLog) newGapDetectedError(handle wineventlog.EvtHandle, previousRecordID, currentRecordID uint64) *gapDetectedError {
+	bookmark, err := l.createBookmarkFromEvent(handle)
+	if err != nil && l.log != nil {
+		l.log.Warn("Failed creating bookmark for record ID gap recovery", "error", err)
+	}
+	return &gapDetectedError{
+		channel:  l.channelName,
+		previous: previousRecordID,
+		current:  currentRecordID,
+		bookmark: bookmark,
+	}
 }
 
 func (l *winEventLog) createBookmarkFromEvent(evtHandle wineventlog.EvtHandle) (string, error) {
@@ -359,6 +515,41 @@ func (l *winEventLog) close() error {
 		l.iterator.Close(),
 		l.renderer.Close(),
 	)
+}
+
+func (l *winEventLog) incrementRenderNoEventRetry(key string) int {
+	if key == l.renderNoEventKey && l.renderNoEventCount > 0 {
+		l.renderNoEventCount++
+		return l.renderNoEventCount
+	}
+	l.renderNoEventKey = key
+	l.renderNoEventCount = 1
+	return l.renderNoEventCount
+}
+
+func (l *winEventLog) resetRenderNoEventRetry() {
+	l.renderNoEventKey = ""
+	l.renderNoEventCount = 0
+}
+
+func (l *winEventLog) incrementGapRetry(key string) int {
+	if key == l.gapRetryKey && l.gapRetryCount > 0 {
+		l.gapRetryCount++
+		return l.gapRetryCount
+	}
+	l.gapRetryKey = key
+	l.gapRetryCount = 1
+	return l.gapRetryCount
+}
+
+func (l *winEventLog) resetGapRetry() {
+	l.gapRetryKey = ""
+	l.gapRetryCount = 0
+}
+
+func (l *winEventLog) resetLastRead() {
+	l.lastRead.Bookmark = ""
+	l.lastRead.RecordNumber = 0
 }
 
 // SetLogger sets the logger for this event log reader.

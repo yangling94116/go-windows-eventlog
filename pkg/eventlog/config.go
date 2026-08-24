@@ -84,6 +84,22 @@ type Config struct {
 	NoMoreEvents string `yaml:"no_more_events,omitempty" json:"no_more_events,omitempty"`
 }
 
+type query struct {
+	IgnoreOlder time.Duration
+	EventID     string
+	Level       string
+	Provider    []string
+}
+
+func (c Config) recordQuery() query {
+	return query{
+		IgnoreOlder: c.IgnoreOlder,
+		EventID:     c.EventID,
+		Level:       c.Level,
+		Provider:    c.Provider,
+	}
+}
+
 // Validate validates the configuration and sets defaults.
 func (c *Config) Validate() error {
 	if c.Name == "" {

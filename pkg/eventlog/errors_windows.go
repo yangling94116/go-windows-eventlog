@@ -38,6 +38,8 @@ func IsRecoverable(err error, isFile bool) bool {
 		err == wineventlog.ERROR_EVT_QUERY_RESULT_STALE ||
 		err == wineventlog.ERROR_INVALID_PARAMETER ||
 		err == wineventlog.ERROR_EVT_PUBLISHER_DISABLED ||
+		errors.Is(err, errRecordIDGap) ||
+		errors.Is(err, errRenderNoEvent) ||
 		(!isFile && errors.Is(err, io.EOF)) ||
 		(!isFile && errors.Is(err, wineventlog.ERROR_EVT_CHANNEL_NOT_FOUND))
 }
