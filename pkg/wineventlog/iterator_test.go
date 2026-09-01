@@ -20,6 +20,7 @@
 package wineventlog
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -261,4 +262,57 @@ func TestEventIterator(t *testing.T) {
 			assert.EqualValues(t, eventCount, iterateCount)
 		})
 	})
+}
+
+func TestIteratorRecoversInvalidOperationWithHandles(t *testing.T) {
+	factoryCalls := 0
+	iterator := &EventIterator{
+		batchSize:    10,
+		subscription: NilHandle,
+		subscriptionFactory: func() (EvtHandle, error) {
+			factoryCalls++
+			return NilHandle, nil
+		},
+	}
+
+	nextCalls := 0
+	iterator.evtNext = func(_ EvtHandle, _ uint32, _ *EvtHandle, _ uint32, _ uint32, returned *uint32) error {
+		nextCalls++
+		if nextCalls == 1 {
+			*returned = 1
+			return windows.ERROR_INVALID_OPERATION
+		}
+		return windows.ERROR_NO_MORE_ITEMS
+	}
+
+	assert.False(t, iterator.moreHandles())
+	assert.NoError(t, iterator.Err())
+	assert.Equal(t, 1, factoryCalls)
+}
+
+func TestIteratorReportsExhaustedRPCRecovery(t *testing.T) {
+	iterator := &EventIterator{
+		batchSize:           1,
+		subscription:        NilHandle,
+		subscriptionFactory: func() (EvtHandle, error) { return NilHandle, nil },
+		evtNext: func(_ EvtHandle, _ uint32, _ *EvtHandle, _ uint32, _ uint32, _ *uint32) error {
+			return windows.RPC_S_INVALID_BOUND
+		},
+	}
+
+	assert.False(t, iterator.moreHandles())
+	assert.ErrorIs(t, iterator.Err(), windows.RPC_S_INVALID_BOUND)
+}
+
+func TestIteratorRecognizesWrappedNoMoreItems(t *testing.T) {
+	iterator := &EventIterator{
+		batchSize:    1,
+		subscription: NilHandle,
+		evtNext: func(_ EvtHandle, _ uint32, _ *EvtHandle, _ uint32, _ uint32, _ *uint32) error {
+			return fmt.Errorf("wrapped: %w", windows.ERROR_NO_MORE_ITEMS)
+		},
+	}
+
+	assert.False(t, iterator.moreHandles())
+	assert.NoError(t, iterator.Err())
 }

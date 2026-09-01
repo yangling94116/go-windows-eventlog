@@ -28,7 +28,7 @@ import (
 
 // IsRecoverable returns a boolean indicating whether the error represents
 // a condition where the Windows Event Log session can be recovered through a
-// reopening of the handle (Close, Open).
+// reset and reopening of the handle (Reset, Open).
 //
 //nolint:errorlint // These are never wrapped.
 func IsRecoverable(err error, isFile bool) bool {
@@ -38,6 +38,8 @@ func IsRecoverable(err error, isFile bool) bool {
 		err == wineventlog.ERROR_EVT_QUERY_RESULT_STALE ||
 		err == wineventlog.ERROR_INVALID_PARAMETER ||
 		err == wineventlog.ERROR_EVT_PUBLISHER_DISABLED ||
+		errors.Is(err, errRecordIDGap) ||
+		errors.Is(err, errRenderNoEvent) ||
 		(!isFile && errors.Is(err, io.EOF)) ||
 		(!isFile && errors.Is(err, wineventlog.ERROR_EVT_CHANNEL_NOT_FOUND))
 }

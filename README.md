@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A Go library for reading Windows Event Logs, extracted from [Elastic Beats](https://github.com/elastic/beats) v9.2.1.
+A Go library for reading Windows Event Logs, based on [Elastic Beats](https://github.com/elastic/beats) v9.2.1 with relevant Winlog fixes ported from v9.2.7.
 
 ## Installation
 
@@ -58,7 +58,7 @@ func main() {
 
 ## Source
 
-Extracted from [elastic/beats](https://github.com/elastic/beats) v9.2.1 winlogbeat module.
+Originally extracted from the [elastic/beats](https://github.com/elastic/beats) v9.2.1 Winlogbeat module. Version 0.1.2 incrementally ports the relevant Winlog changes from Beats v9.2.1 through v9.2.7 while preserving the v0.1.1 public API.
 
 ## License
 
