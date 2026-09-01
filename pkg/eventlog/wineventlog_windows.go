@@ -111,6 +111,8 @@ type winEventLog struct {
 	gapRetryCount      int
 }
 
+var _ CheckpointProvider = (*winEventLog)(nil)
+
 // New creates and returns a new EventLog instance based on the given config.
 func New(config Config) (EventLog, error) {
 	if err := config.Validate(); err != nil {
@@ -186,6 +188,11 @@ func (l *winEventLog) Channel() string {
 // IsFile returns true if the event log is an evtx file.
 func (l *winEventLog) IsFile() bool {
 	return l.file
+}
+
+// Checkpoint returns the latest source position reached by the reader.
+func (l *winEventLog) Checkpoint() checkpoint.EventLogState {
+	return l.lastRead
 }
 
 func (l *winEventLog) Open(state checkpoint.EventLogState) error {

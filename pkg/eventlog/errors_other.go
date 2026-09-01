@@ -21,7 +21,7 @@ package eventlog
 
 // IsRecoverable returns a boolean indicating whether the error represents
 // a condition where the Windows Event Log session can be recovered through a
-// reopening of the handle (Close, Open).
+// reset and reopening of the handle (Reset, Open).
 func IsRecoverable(error, bool) bool {
 	return false
 }

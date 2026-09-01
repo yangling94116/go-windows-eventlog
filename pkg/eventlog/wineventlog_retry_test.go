@@ -75,6 +75,23 @@ func TestHandleProcessErrorAcceptsRecordGapAfterRetryLimit(t *testing.T) {
 	require.NoError(t, reader.handleProcessError(failure))
 	assert.Equal(t, "current", reader.lastRead.Bookmark)
 	assert.Equal(t, uint64(105), reader.lastRead.RecordNumber)
+	assert.Equal(t, reader.lastRead, reader.Checkpoint())
+}
+
+func TestCheckpointReturnsLatestSourceState(t *testing.T) {
+	reader := &winEventLog{
+		lastRead: checkpoint.EventLogState{
+			Name:         "Security",
+			RecordNumber: 105,
+			Bookmark:     "current",
+		},
+	}
+
+	assert.Equal(t, checkpoint.EventLogState{
+		Name:         "Security",
+		RecordNumber: 105,
+		Bookmark:     "current",
+	}, reader.Checkpoint())
 }
 
 func TestRecoveryCountersResetForDifferentFailures(t *testing.T) {

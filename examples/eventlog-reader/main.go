@@ -77,6 +77,10 @@ func main() {
 		log.Fatalf("Failed to create event log reader: %v", err)
 	}
 	defer reader.Close()
+	sourceCheckpoint, ok := reader.(eventlog.CheckpointProvider)
+	if !ok {
+		log.Fatal("event log reader does not provide a source checkpoint")
+	}
 
 	// Set logger (optional)
 	stdLogger := eventlog.NewStdLogger(log.Default())
@@ -125,31 +129,10 @@ loop:
 
 		// Read a batch of events
 		records, err := reader.Read()
-		if err != nil {
-			if err.Error() == "EOF" {
-				log.Println("Reached end of event log")
-				break loop
-			}
-			log.Printf("Error reading events: %v", err)
-			// Try to reset and continue
-			if resetErr := reader.Reset(); resetErr != nil {
-				log.Printf("Failed to reset reader: %v", resetErr)
-				break loop
-			}
-			if openErr := reader.Open(state); openErr != nil {
-				log.Printf("Failed to reopen reader: %v", openErr)
-				break loop
-			}
-			continue
-		}
+		state = sourceCheckpoint.Checkpoint()
 
-		if len(records) == 0 {
-			// No more events available, wait a bit
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		// Process the batch
+		// Process records before handling a read error. Read may return a
+		// partially filled batch together with a recoverable error.
 		for _, record := range records {
 			totalEvents++
 
@@ -175,6 +158,32 @@ loop:
 			// Update checkpoint with the last event's offset
 			cp.PersistState(record.Offset)
 			state = record.Offset
+		}
+
+		if err != nil {
+			if err.Error() == "EOF" {
+				log.Println("Reached end of event log")
+				break loop
+			}
+			log.Printf("Error reading events: %v", err)
+			// Recovery must use the source cursor, which may have advanced
+			// while a record was skipped or filtered.
+			state = sourceCheckpoint.Checkpoint()
+			if resetErr := reader.Reset(); resetErr != nil {
+				log.Printf("Failed to reset reader: %v", resetErr)
+				break loop
+			}
+			if openErr := reader.Open(state); openErr != nil {
+				log.Printf("Failed to reopen reader: %v", openErr)
+				break loop
+			}
+			continue
+		}
+
+		if len(records) == 0 {
+			// No more events available, wait a bit
+			time.Sleep(1 * time.Second)
+			continue
 		}
 
 		log.Printf("Processed batch of %d events", len(records))

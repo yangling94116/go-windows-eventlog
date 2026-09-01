@@ -52,6 +52,15 @@ type EventLog interface {
 	IsFile() bool
 }
 
+// CheckpointProvider is an optional EventLog extension that exposes the
+// latest source position reached by the reader. This position advances when
+// the reader accepts a record, including a record skipped during recovery. It
+// is separate from any durable checkpoint maintained by the caller after
+// successful delivery.
+type CheckpointProvider interface {
+	Checkpoint() checkpoint.EventLogState
+}
+
 // Publisher is an interface for publishing events read from the event log.
 // Implementations should handle batching, error handling, and any required
 // transformations.

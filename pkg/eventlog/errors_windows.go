@@ -21,7 +21,6 @@ package eventlog
 
 import (
 	"errors"
-	"io"
 
 	"github.com/tianlin/go-windows-eventlog/pkg/wineventlog"
 )
@@ -40,6 +39,5 @@ func IsRecoverable(err error, isFile bool) bool {
 		err == wineventlog.ERROR_EVT_PUBLISHER_DISABLED ||
 		errors.Is(err, errRecordIDGap) ||
 		errors.Is(err, errRenderNoEvent) ||
-		(!isFile && errors.Is(err, io.EOF)) ||
 		(!isFile && errors.Is(err, wineventlog.ERROR_EVT_CHANNEL_NOT_FOUND))
 }

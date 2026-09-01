@@ -30,81 +30,81 @@ import (
 
 func TestIsRecoverable(t *testing.T) {
 	tests := []struct {
-		name       string
-		err        error
-		isFile     bool
+		name        string
+		err         error
+		isFile      bool
 		recoverable bool
 	}{
 		{
-			name:       "ERROR_INVALID_HANDLE",
-			err:        wineventlog.ERROR_INVALID_HANDLE,
-			isFile:     false,
+			name:        "ERROR_INVALID_HANDLE",
+			err:         wineventlog.ERROR_INVALID_HANDLE,
+			isFile:      false,
 			recoverable: true,
 		},
 		{
-			name:       "RPC_S_SERVER_UNAVAILABLE",
-			err:        wineventlog.RPC_S_SERVER_UNAVAILABLE,
-			isFile:     false,
+			name:        "RPC_S_SERVER_UNAVAILABLE",
+			err:         wineventlog.RPC_S_SERVER_UNAVAILABLE,
+			isFile:      false,
 			recoverable: true,
 		},
 		{
-			name:       "RPC_S_CALL_CANCELLED",
-			err:        wineventlog.RPC_S_CALL_CANCELLED,
-			isFile:     false,
+			name:        "RPC_S_CALL_CANCELLED",
+			err:         wineventlog.RPC_S_CALL_CANCELLED,
+			isFile:      false,
 			recoverable: true,
 		},
 		{
-			name:       "ERROR_EVT_QUERY_RESULT_STALE",
-			err:        wineventlog.ERROR_EVT_QUERY_RESULT_STALE,
-			isFile:     false,
+			name:        "ERROR_EVT_QUERY_RESULT_STALE",
+			err:         wineventlog.ERROR_EVT_QUERY_RESULT_STALE,
+			isFile:      false,
 			recoverable: true,
 		},
 		{
-			name:       "ERROR_INVALID_PARAMETER",
-			err:        wineventlog.ERROR_INVALID_PARAMETER,
-			isFile:     false,
+			name:        "ERROR_INVALID_PARAMETER",
+			err:         wineventlog.ERROR_INVALID_PARAMETER,
+			isFile:      false,
 			recoverable: true,
 		},
 		{
-			name:       "ERROR_EVT_PUBLISHER_DISABLED",
-			err:        wineventlog.ERROR_EVT_PUBLISHER_DISABLED,
-			isFile:     false,
+			name:        "ERROR_EVT_PUBLISHER_DISABLED",
+			err:         wineventlog.ERROR_EVT_PUBLISHER_DISABLED,
+			isFile:      false,
 			recoverable: true,
 		},
 		{
-			name:       "io.EOF for channel (not file)",
-			err:        io.EOF,
-			isFile:     false,
-			recoverable: true,
-		},
-		{
-			name:       "io.EOF for file",
-			err:        io.EOF,
-			isFile:     true,
+			name:        "io.EOF for channel (not file)",
+			err:         io.EOF,
+			isFile:      false,
 			recoverable: false,
 		},
 		{
-			name:       "ERROR_EVT_CHANNEL_NOT_FOUND for channel (not file)",
-			err:        wineventlog.ERROR_EVT_CHANNEL_NOT_FOUND,
-			isFile:     false,
+			name:        "io.EOF for file",
+			err:         io.EOF,
+			isFile:      true,
+			recoverable: false,
+		},
+		{
+			name:        "ERROR_EVT_CHANNEL_NOT_FOUND for channel (not file)",
+			err:         wineventlog.ERROR_EVT_CHANNEL_NOT_FOUND,
+			isFile:      false,
 			recoverable: true,
 		},
 		{
-			name:       "ERROR_EVT_CHANNEL_NOT_FOUND for file",
-			err:        wineventlog.ERROR_EVT_CHANNEL_NOT_FOUND,
-			isFile:     true,
+			name:        "ERROR_EVT_CHANNEL_NOT_FOUND for file",
+			err:         wineventlog.ERROR_EVT_CHANNEL_NOT_FOUND,
+			isFile:      true,
 			recoverable: false,
 		},
 		{
-			name:       "other error",
-			err:        errors.New("some other error"),
-			isFile:     false,
+			name:        "other error",
+			err:         errors.New("some other error"),
+			isFile:      false,
 			recoverable: false,
 		},
 		{
-			name:       "nil error",
-			err:        nil,
-			isFile:     false,
+			name:        "nil error",
+			err:         nil,
+			isFile:      false,
 			recoverable: false,
 		},
 	}
