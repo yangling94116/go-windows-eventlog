@@ -435,7 +435,7 @@ func (l *winEventLog) processHandle(h wineventlog.EvtHandle) (*Record, error) {
 	}
 
 	previousRecordID := l.lastRead.RecordNumber
-	if l.config.Query == "" && !l.file && previousRecordID > 0 && r.RecordID > previousRecordID+1 {
+	if l.shouldCheckRecordIDGap() && previousRecordID > 0 && r.RecordID > previousRecordID+1 {
 		if l.log != nil {
 			l.log.Warn("Record ID gap detected, resetting subscription",
 				"channel", l.channelName,
@@ -459,6 +459,10 @@ func (l *winEventLog) processHandle(h wineventlog.EvtHandle) (*Record, error) {
 	}
 	l.lastRead = r.Offset
 	return r, nil
+}
+
+func (l *winEventLog) shouldCheckRecordIDGap() bool {
+	return l.config.Query == "" && !l.file && !l.isForwarded()
 }
 
 func (l *winEventLog) newGapDetectedError(handle wineventlog.EvtHandle, previousRecordID, currentRecordID uint64) *gapDetectedError {

@@ -101,3 +101,33 @@ func TestCustomQueryAllowsNonContiguousRecordIDs(t *testing.T) {
 	require.NotNil(t, record)
 	assert.Equal(t, uint64(105), record.RecordID)
 }
+
+func TestForwardedEventsAllowsNonContiguousRecordIDs(t *testing.T) {
+	reader := &winEventLog{
+		config:      Config{Name: "ForwardedEvents"},
+		channelName: "ForwardedEvents",
+		lastRead:    checkpoint.EventLogState{RecordNumber: 100},
+		log:         noopLogger{},
+		renderer:    staticEventRenderer{event: &winevent.Event{RecordID: 105}},
+	}
+
+	record, err := reader.processHandle(wineventlog.NilHandle)
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	assert.Equal(t, uint64(105), record.RecordID)
+}
+
+func TestExplicitForwardedReaderAllowsNonContiguousRecordIDs(t *testing.T) {
+	forwarded := true
+	reader := &winEventLog{
+		config:   Config{Name: "Security", Forwarded: &forwarded},
+		lastRead: checkpoint.EventLogState{RecordNumber: 100},
+		log:      noopLogger{},
+		renderer: staticEventRenderer{event: &winevent.Event{RecordID: 105}},
+	}
+
+	record, err := reader.processHandle(wineventlog.NilHandle)
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	assert.Equal(t, uint64(105), record.RecordID)
+}
